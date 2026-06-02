@@ -1,5 +1,5 @@
 """
-core/gemini.py — OCR + Traducción en una sola llamada con Gemini Flash
+core/gemini.py — OCR + Traducción en una sola llamada optimizada
 """
 
 import io
@@ -8,6 +8,7 @@ from google import genai
 from google.genai import types
 from PIL import Image
 from dotenv import load_dotenv
+from pydantic import BaseModel
 
 load_dotenv()
 
@@ -15,63 +16,46 @@ cliente = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 MODELO = "gemini-2.5-flash"
 
-PROMPT_TRADUCCION = """Tu única responsabilidad es extraer el texto de esta imagen y traducirlo al español.
 
-Reglas estrictas:
-- Si no hay texto en la imagen, devuelve exactamente: ""
-- No agregues explicaciones, saludos, ni comentarios
-- No uses markdown, asteriscos ni formato especial
-- Devuelve únicamente el texto traducido, tal como aparece en la imagen pero en español
-- Mantené la estructura y saltos de línea del texto original"""
+class ResultadoTraduccion(BaseModel):
+    original: str
+    traduccion: str
 
-PROMPT_ORIGINAL = """Extraé únicamente el texto de esta imagen, sin traducir.
-Si no hay texto devuelve exactamente: ""
-Sin explicaciones ni formato extra."""
+
+PROMPT = """Analiza la imagen provista.
+1. Extraé el texto original exactamente como aparece, sin traducir.
+2. Traducí ese mismo texto al español.
+Si la imagen no contiene texto legible, devolvé cadenas vacías."""
 
 
 def _imagen_a_bytes(imagen: Image.Image) -> bytes:
+    """Convierte PIL Image a JPEG comprimido al 80% — más liviano que PNG."""
     buffer = io.BytesIO()
-    imagen.save(buffer, format="PNG")
+    imagen.convert("RGB").save(buffer, format="JPEG", quality=80)
     return buffer.getvalue()
 
 
 def extraer_y_traducir(imagen: Image.Image) -> tuple[str, str]:
     """
     Recibe una imagen PIL.
-    Devuelve (texto_original, texto_traducido).
+    Devuelve (texto_original, texto_traducido) en una sola llamada a Gemini.
     """
     img_bytes = _imagen_a_bytes(imagen)
 
     parte_imagen = types.Part.from_bytes(
         data=img_bytes,
-        mime_type="image/png"
+        mime_type="image/jpeg"
     )
 
-    # Llamada 1 — Traducción
-    respuesta_tr = cliente.models.generate_content(
+    respuesta = cliente.models.generate_content(
         model=MODELO,
-        contents=[PROMPT_TRADUCCION, parte_imagen],
+        contents=[PROMPT, parte_imagen],
         config=types.GenerateContentConfig(
             temperature=0.1,
-            max_output_tokens=2048,
+            response_mime_type="application/json",
+            response_schema=ResultadoTraduccion,
         )
     )
-    traduccion = respuesta_tr.text.strip()
 
-    if traduccion == '""' or not traduccion:
-        return "", ""
-
-    # Llamada 2 — Original
-    respuesta_og = cliente.models.generate_content(
-        model=MODELO,
-        contents=[PROMPT_ORIGINAL, parte_imagen],
-        config=types.GenerateContentConfig(
-            temperature=0.1,
-            max_output_tokens=2048,
-        )
-    )
-    original = respuesta_og.text.strip()
-    if original == '""':
-        original = ""
-
-    return original, traduccion
+    datos = ResultadoTraduccion.model_validate_json(respuesta.text)
+    return datos.original, datos.traduccion
