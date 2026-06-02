@@ -1,80 +1,92 @@
 """
 main.py — Entry point del Traductor de Pantalla
-================================================
-Uso:
-    python main.py
-
-Hotkey: Ctrl + Shift + Q
 """
 
-import threading
 import sys
-import config  # Carga credenciales de Google al importar
+import threading
+import config
+
+from PyQt6.QtWidgets import QApplication
+from PyQt6.QtCore    import QObject, pyqtSignal
+from PIL             import Image
 
 from core.hotkey      import HotkeyListener
-from core.capture     import capturar_pantalla, recortar_region
-from core.ocr         import extraer_texto
-from core.translator  import traducir
+from core.capture     import capturar_pantalla
+from core.gemini      import extraer_y_traducir
 from ui.selector      import SelectorPantalla
-from ui.result_window import VentanaResultado
+from ui.result_window import VentanaResultado, VentanaError
+
+_screenshot_pendiente = None
 
 
-def on_region_seleccionada(region):
-    """
-    Callback que recibe la región recortada del selector.
-    Ejecuta OCR + traducción y muestra el resultado.
-    """
-    try:
-        # 1. OCR — Google Vision extrae el texto
-        texto = extraer_texto(region)
+class Coordinador(QObject):
+    senal_mostrar_resultado = pyqtSignal(str, str)
+    senal_error             = pyqtSignal(str)
 
-        if not texto:
-            print("[!] No se detectó texto en la zona seleccionada.")
-            return
 
-        print(f"[OCR] {texto[:80]}...")
+coordinador = Coordinador()
 
-        # 2. Traducción
-        traduccion = traducir(texto)
-        print(f"[TR]  {traduccion[:80]}...")
 
-        # 3. Mostrar resultado en hilo separado
-        threading.Thread(
-            target=lambda: VentanaResultado(texto, traduccion),
-            daemon=True
-        ).start()
+def on_region_seleccionada(region: Image.Image):
+    """Corre en hilo del selector — procesa con Gemini."""
+    def _procesar():
+        try:
+            print("[·] Procesando con Gemini...")
+            original, traduccion = extraer_y_traducir(region)
 
-    except Exception as e:
-        print(f"[ERROR] {e}")
+            if not traduccion:
+                coordinador.senal_error.emit("No se detectó texto en la zona seleccionada.")
+                return
+
+            print("[OK] Traducción lista.")
+            coordinador.senal_mostrar_resultado.emit(original, traduccion)
+
+        except Exception as e:
+            print(f"[ERROR] {e}")
+            coordinador.senal_error.emit(f"Error: {str(e)}")
+
+    threading.Thread(target=_procesar, daemon=True).start()
 
 
 def on_hotkey():
-    """
-    Callback del hotkey — se ejecuta en el hilo del listener.
-    Captura pantalla al instante y abre el selector.
-    """
+    """Corre en hilo del listener — captura y abre selector en hilo propio."""
     def _run():
-        # Captura INMEDIATA antes de que nada desaparezca
+        print("[·] Capturando pantalla...")
         screenshot = capturar_pantalla()
-
-        # Abre selector sobre la imagen congelada
+        # Selector corre en su propio hilo con tkinter
         SelectorPantalla(screenshot, on_region_seleccionada)
 
     threading.Thread(target=_run, daemon=True).start()
 
 
+def mostrar_resultado(original: str, traduccion: str):
+    """Corre en hilo principal Qt."""
+    VentanaResultado(original, traduccion)
+
+
+def mostrar_error(mensaje: str):
+    """Corre en hilo principal Qt."""
+    VentanaError(mensaje)
+
+
 if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    app.setQuitOnLastWindowClosed(False)
+
+    coordinador.senal_mostrar_resultado.connect(mostrar_resultado)
+    coordinador.senal_error.connect(mostrar_error)
+
+    listener = HotkeyListener(callback=on_hotkey)
+    listener.start()
+
     print("━" * 50)
     print("  Traductor de Pantalla")
     print("  Hotkey : Ctrl + Shift + Q")
     print("  Salir  : Ctrl + C")
     print("━" * 50)
 
-    listener = HotkeyListener(callback=on_hotkey)
-    listener.start()
-
     try:
-        listener.join()
+        sys.exit(app.exec())
     except KeyboardInterrupt:
         print("\n[·] Cerrando...")
         listener.stop()

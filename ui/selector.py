@@ -1,5 +1,7 @@
 """
-ui/selector.py — Overlay con pantalla congelada para seleccionar región
+ui/selector.py — Overlay con pantalla congelada (tkinter)
+PyQt6 no logra tomar foco en Windows desde un proceso en background.
+tkinter no tiene ese problema.
 """
 
 import tkinter as tk
@@ -7,11 +9,6 @@ from PIL import Image, ImageTk
 
 
 class SelectorPantalla:
-    """
-    Muestra la screenshot completa como fondo congelado.
-    El usuario dibuja un rectángulo sobre la zona que quiere traducir.
-    Al soltar el mouse llama al callback con la región recortada.
-    """
 
     def __init__(self, screenshot: Image.Image, callback):
         self.screenshot = screenshot
@@ -31,12 +28,10 @@ class SelectorPantalla:
         sw = self.root.winfo_screenwidth()
         sh = self.root.winfo_screenheight()
 
-        # Factor de escala por si el monitor es HiDPI
         self.scale_x = screenshot.width  / sw
         self.scale_y = screenshot.height / sh
 
-        # Redimensionar screenshot al tamaño exacto de la pantalla
-        img_display = screenshot.resize((sw, sh), Image.LANCZOS)
+        img_display  = screenshot.resize((sw, sh), Image.LANCZOS)
         self.tk_img  = ImageTk.PhotoImage(img_display)
 
         self.canvas = tk.Canvas(
@@ -47,10 +42,10 @@ class SelectorPantalla:
         )
         self.canvas.pack(fill=tk.BOTH, expand=True)
 
-        # Fondo: screenshot congelada
+        # Screenshot congelada como fondo
         self.canvas.create_image(0, 0, anchor="nw", image=self.tk_img)
 
-        # Overlay oscuro semitransparente
+        # Overlay oscuro
         self.canvas.create_rectangle(
             0, 0, sw, sh,
             fill="black",
@@ -58,12 +53,12 @@ class SelectorPantalla:
             outline=""
         )
 
-        # Instrucción centrada arriba
+        # Instrucción
         self.canvas.create_text(
-            sw // 2, 28,
-            text="Seleccioná la zona a traducir   •   ESC para cancelar",
+            sw // 2, 30,
+            text="Seleccioná la zona a traducir   ·   ESC para cancelar",
             fill="#ffffff",
-            font=("Segoe UI", 12),
+            font=("Segoe UI", 13),
             anchor="n"
         )
 
@@ -98,9 +93,8 @@ class SelectorPantalla:
         self.root.destroy()
 
         if (x2 - x1) < 10 or (y2 - y1) < 10:
-            return  # Selección muy pequeña, ignorar
+            return
 
-        # Convertir coordenadas de pantalla a coordenadas reales del screenshot
         rx1 = int(x1 * self.scale_x)
         ry1 = int(y1 * self.scale_y)
         rx2 = int(x2 * self.scale_x)

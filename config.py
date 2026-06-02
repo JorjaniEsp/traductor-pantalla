@@ -2,43 +2,25 @@
 config.py — Configuración central del proyecto
 """
 
-import os
 from pathlib import Path
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
 
 # ─── RUTAS ────────────────────────────────────────────────────────────────────
 
 BASE_DIR = Path(__file__).parent
-CREDENTIALS_PATH = BASE_DIR / "credentials.json"
 
-# Apuntamos Google Cloud al archivo de credenciales
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(CREDENTIALS_PATH)
+# ─── GEMINI ───────────────────────────────────────────────────────────────────
 
-# ─── HOTKEY ───────────────────────────────────────────────────────────────────
-
-# Combinación de teclas para activar la captura
-# Ctrl + Shift + Q
-HOTKEY_CTRL  = True
-HOTKEY_SHIFT = True
-HOTKEY_KEY   = 'q'
-
-# ─── OCR ──────────────────────────────────────────────────────────────────────
-
-# Idioma del texto a extraer (en = inglés)
-OCR_LANGUAGE = "en"
-
-# ─── TRADUCCIÓN ───────────────────────────────────────────────────────────────
-
-TRANSLATE_SOURCE = "auto"   # Detecta automáticamente el idioma
-TRANSLATE_TARGET = "es"     # Español
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 # ─── INTERFAZ ─────────────────────────────────────────────────────────────────
 
-# Tema de la ventana de resultado
-UI_THEME      = "dark"
-UI_WIDTH      = 580
-UI_HEIGHT     = 480
+UI_WIDTH  = 580
+UI_HEIGHT = 480
 
-# Paleta de colores
 COLORS = {
     "bg":       "#1a1d23",
     "surface":  "#22262f",

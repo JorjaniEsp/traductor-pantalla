@@ -1,186 +1,285 @@
 """
-ui/result_window.py — Ventana de resultado con CustomTkinter
+ui/result_window.py — Ventana de resultado (PyQt6)
 """
 
-import customtkinter as ctk
+from PyQt6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout,
+    QLabel, QTextEdit, QPushButton, QFrame, QApplication
+)
+from PyQt6.QtCore import Qt, QPoint
+from PyQt6.QtGui  import QPainter, QColor, QFont, QShortcut, QKeySequence
 import config
 
 
-class VentanaResultado:
-    """
-    Ventana minimalista oscura que muestra el texto original
-    y su traducción al español.
-    """
+class VentanaResultado(QWidget):
 
     def __init__(self, original: str, traduccion: str):
-        ctk.set_appearance_mode("dark")
-        ctk.set_default_color_theme("green")
+        super().__init__()
+        self._drag_pos = QPoint()
 
-        self.root = ctk.CTk()
-        self.root.title("")
-        self.root.resizable(True, True)
-        self.root.attributes("-topmost", True)
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint |
+            Qt.WindowType.WindowStaysOnTopHint |
+            Qt.WindowType.Tool
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setFixedWidth(config.UI_WIDTH)
+        self.setMinimumHeight(config.UI_HEIGHT)
 
-        # Centrar en pantalla
-        w, h = config.UI_WIDTH, config.UI_HEIGHT
-        sw   = self.root.winfo_screenwidth()
-        sh   = self.root.winfo_screenheight()
-        x    = (sw - w) // 2
-        y    = (sh - h) // 2
-        self.root.geometry(f"{w}x{h}+{x}+{y}")
-        self.root.configure(fg_color=config.COLORS["bg"])
-
-        # Sin bordes nativos
-        self.root.overrideredirect(True)
+        screen = QApplication.primaryScreen().geometry()
+        self.move(
+            (screen.width()  - config.UI_WIDTH)  // 2,
+            (screen.height() - config.UI_HEIGHT) // 2
+        )
 
         self._construir_ui(original, traduccion)
+        self.show()
 
-        # Cerrar con ESC o Enter
-        self.root.bind("<Escape>", lambda e: self.root.destroy())
-        self.root.bind("<Return>", lambda e: self.root.destroy())
-
-        self.root.mainloop()
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(Qt.PenStyle.NoPen)
+        # Sombra
+        painter.setBrush(QColor(0, 0, 0, 60))
+        painter.drawRoundedRect(self.rect().adjusted(4, 4, 4, 4), 12, 12)
+        # Fondo
+        painter.setBrush(QColor(config.COLORS["bg"]))
+        painter.drawRoundedRect(self.rect().adjusted(0, 0, -4, -4), 12, 12)
 
     def _construir_ui(self, original: str, traduccion: str):
         C = config.COLORS
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 4, 4)
+        layout.setSpacing(0)
 
-        # ── Barra de título ──────────────────────────────────────────
-        title_bar = ctk.CTkFrame(
-            self.root,
-            fg_color=C["surface"],
-            corner_radius=0,
-            height=38
-        )
-        title_bar.pack(fill="x")
-        title_bar.pack_propagate(False)
+        # ── Título ───────────────────────────────────────────────
+        title_bar = QWidget()
+        title_bar.setFixedHeight(42)
+        title_bar.setStyleSheet(f"""
+            background-color: {C['surface']};
+            border-radius: 12px 12px 0px 0px;
+        """)
+        tl = QHBoxLayout(title_bar)
+        tl.setContentsMargins(14, 0, 8, 0)
 
-        ctk.CTkLabel(
-            title_bar,
-            text="  ⬡  Traducción",
-            text_color=C["accent"],
-            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
-            fg_color="transparent"
-        ).pack(side="left", padx=4)
+        lbl_titulo = QLabel("⬡  Traducción")
+        lbl_titulo.setStyleSheet(f"""
+            color: {C['accent']};
+            font-family: 'Segoe UI';
+            font-size: 13px;
+            font-weight: bold;
+            background: transparent;
+        """)
 
-        # Botón cerrar
-        btn_cerrar = ctk.CTkButton(
-            title_bar,
-            text="✕",
-            width=36, height=28,
-            fg_color="transparent",
-            hover_color="#3d1f1f",
-            text_color=C["text_dim"],
-            font=ctk.CTkFont(size=13),
-            corner_radius=4,
-            command=self.root.destroy
-        )
-        btn_cerrar.pack(side="right", padx=6, pady=4)
+        btn_copiar = QPushButton("⎘  Copiar")
+        btn_copiar.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_copiar.setStyleSheet(f"""
+            QPushButton {{
+                color: {C['text_dim']};
+                background: transparent;
+                border: 1px solid {C['border']};
+                border-radius: 5px;
+                padding: 3px 10px;
+                font-size: 11px;
+                font-family: 'Segoe UI';
+            }}
+            QPushButton:hover {{
+                background: {C['border']};
+                color: {C['text']};
+            }}
+        """)
+        btn_copiar.clicked.connect(lambda: QApplication.clipboard().setText(traduccion))
 
-        # Botón copiar traducción
-        btn_copiar = ctk.CTkButton(
-            title_bar,
-            text="⎘  Copiar",
-            width=80, height=28,
-            fg_color="transparent",
-            hover_color=C["border"],
-            text_color=C["text_dim"],
-            font=ctk.CTkFont(size=11),
-            corner_radius=4,
-            command=lambda: self._copiar(traduccion)
-        )
-        btn_copiar.pack(side="right", padx=2, pady=4)
+        btn_cerrar = QPushButton("✕")
+        btn_cerrar.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_cerrar.setFixedSize(28, 28)
+        btn_cerrar.setStyleSheet(f"""
+            QPushButton {{
+                color: {C['text_dim']};
+                background: transparent;
+                border: none;
+                border-radius: 5px;
+                font-size: 13px;
+            }}
+            QPushButton:hover {{
+                background: #3d1f1f;
+                color: #ff6b6b;
+            }}
+        """)
+        btn_cerrar.clicked.connect(self.close)
 
-        # Drag para mover ventana
-        self._drag_x = self._drag_y = 0
-        title_bar.bind("<ButtonPress-1>",  self._start_drag)
-        title_bar.bind("<B1-Motion>",      self._do_drag)
+        tl.addWidget(lbl_titulo)
+        tl.addStretch()
+        tl.addWidget(btn_copiar)
+        tl.addSpacing(6)
+        tl.addWidget(btn_cerrar)
 
-        # ── Separador ───────────────────────────────────────────────
-        ctk.CTkFrame(
-            self.root,
-            fg_color=C["border"],
-            height=1,
-            corner_radius=0
-        ).pack(fill="x")
+        title_bar.mousePressEvent = self._start_drag
+        title_bar.mouseMoveEvent  = self._do_drag
+        layout.addWidget(title_bar)
 
-        # ── Cuerpo ──────────────────────────────────────────────────
-        body = ctk.CTkFrame(
-            self.root,
-            fg_color=C["bg"],
-            corner_radius=0
-        )
-        body.pack(fill="both", expand=True, padx=16, pady=12)
+        # ── Separador ────────────────────────────────────────────
+        sep = QFrame()
+        sep.setFixedHeight(1)
+        sep.setStyleSheet(f"background: {C['border']};")
+        layout.addWidget(sep)
 
-        # Label ORIGINAL
-        ctk.CTkLabel(
-            body,
-            text="ORIGINAL",
-            text_color=C["text_dim"],
-            font=ctk.CTkFont(family="Segoe UI", size=9, weight="bold"),
-            fg_color="transparent",
-            anchor="w"
-        ).pack(fill="x", pady=(0, 4))
+        # ── Cuerpo ───────────────────────────────────────────────
+        body = QWidget()
+        body.setStyleSheet(f"background: {C['bg']};")
+        bl = QVBoxLayout(body)
+        bl.setContentsMargins(16, 12, 16, 16)
+        bl.setSpacing(8)
 
-        # Caja texto original
-        og_box = ctk.CTkTextbox(
-            body,
-            fg_color=C["surface"],
-            text_color=C["text_og"],
-            font=ctk.CTkFont(family="Cascadia Code", size=10),
-            corner_radius=6,
-            border_width=1,
-            border_color=C["border"],
-            height=90,
-            wrap="word",
-            activate_scrollbars=False
-        )
-        og_box.insert("end", original)
-        og_box.configure(state="disabled")
-        og_box.pack(fill="x", pady=(0, 12))
+        # Original
+        lbl_og = QLabel("ORIGINAL")
+        lbl_og.setStyleSheet(f"""
+            color: {C['text_dim']};
+            font-size: 9px;
+            font-weight: bold;
+            font-family: 'Segoe UI';
+            letter-spacing: 1px;
+            background: transparent;
+        """)
+        bl.addWidget(lbl_og)
 
-        # Separador sutil
-        ctk.CTkFrame(
-            body,
-            fg_color=C["border"],
-            height=1,
-            corner_radius=0
-        ).pack(fill="x", pady=(0, 12))
+        og_box = QTextEdit()
+        og_box.setPlainText(original)
+        og_box.setReadOnly(True)
+        og_box.setFixedHeight(100)
+        og_box.setStyleSheet(f"""
+            QTextEdit {{
+                background: {C['surface']};
+                color: {C['text_og']};
+                font-family: 'Cascadia Code', 'Consolas';
+                font-size: 11px;
+                border: 1px solid {C['border']};
+                border-radius: 6px;
+                padding: 8px;
+            }}
+            QScrollBar:vertical {{
+                background: {C['surface']};
+                width: 6px;
+                border-radius: 3px;
+            }}
+            QScrollBar::handle:vertical {{
+                background: {C['border']};
+                border-radius: 3px;
+            }}
+        """)
+        bl.addWidget(og_box)
 
-        # Label TRADUCCIÓN
-        ctk.CTkLabel(
-            body,
-            text="TRADUCCIÓN  ·  EN → ES",
-            text_color=C["accent"],
-            font=ctk.CTkFont(family="Segoe UI", size=9, weight="bold"),
-            fg_color="transparent",
-            anchor="w"
-        ).pack(fill="x", pady=(0, 4))
+        sep2 = QFrame()
+        sep2.setFixedHeight(1)
+        sep2.setStyleSheet(f"background: {C['border']};")
+        bl.addWidget(sep2)
 
-        # Caja traducción (protagonista)
-        tr_box = ctk.CTkTextbox(
-            body,
-            fg_color=C["surface"],
-            text_color=C["text"],
-            font=ctk.CTkFont(family="Segoe UI", size=14),
-            corner_radius=6,
-            border_width=1,
-            border_color=C["accent"],
-            wrap="word",
-            activate_scrollbars=True
-        )
-        tr_box.insert("end", traduccion)
-        tr_box.configure(state="disabled")
-        tr_box.pack(fill="both", expand=True)
+        # Traducción
+        lbl_tr = QLabel("TRADUCCIÓN  ·  EN → ES")
+        lbl_tr.setStyleSheet(f"""
+            color: {C['accent']};
+            font-size: 9px;
+            font-weight: bold;
+            font-family: 'Segoe UI';
+            letter-spacing: 1px;
+            background: transparent;
+        """)
+        bl.addWidget(lbl_tr)
 
-    def _copiar(self, texto: str):
-        self.root.clipboard_clear()
-        self.root.clipboard_append(texto)
+        tr_box = QTextEdit()
+        tr_box.setPlainText(traduccion)
+        tr_box.setReadOnly(True)
+        tr_box.setMinimumHeight(180)
+        tr_box.setStyleSheet(f"""
+            QTextEdit {{
+                background: {C['surface']};
+                color: {C['text']};
+                font-family: 'Segoe UI';
+                font-size: 13px;
+                border: 1px solid {C['accent']};
+                border-radius: 6px;
+                padding: 10px;
+            }}
+            QScrollBar:vertical {{
+                background: {C['surface']};
+                width: 6px;
+                border-radius: 3px;
+            }}
+            QScrollBar::handle:vertical {{
+                background: {C['border']};
+                border-radius: 3px;
+            }}
+        """)
+        bl.addWidget(tr_box)
+        layout.addWidget(body)
+
+        QShortcut(QKeySequence("Escape"), self).activated.connect(self.close)
+        QShortcut(QKeySequence("Return"), self).activated.connect(self.close)
 
     def _start_drag(self, event):
-        self._drag_x = event.x
-        self._drag_y = event.y
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
 
     def _do_drag(self, event):
-        x = self.root.winfo_x() + (event.x - self._drag_x)
-        y = self.root.winfo_y() + (event.y - self._drag_y)
-        self.root.geometry(f"+{x}+{y}")
+        if event.buttons() == Qt.MouseButton.LeftButton:
+            self.move(event.globalPosition().toPoint() - self._drag_pos)
+
+
+class VentanaError(QWidget):
+    """Ventana minimalista para mostrar errores."""
+
+    def __init__(self, mensaje: str):
+        super().__init__()
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint |
+            Qt.WindowType.WindowStaysOnTopHint |
+            Qt.WindowType.Tool
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setFixedSize(340, 120)
+
+        screen = QApplication.primaryScreen().geometry()
+        self.move(
+            (screen.width()  - 340) // 2,
+            (screen.height() - 120) // 2
+        )
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 16, 16, 16)
+
+        lbl = QLabel(mensaje)
+        lbl.setWordWrap(True)
+        lbl.setStyleSheet(f"""
+            color: {config.COLORS['error']};
+            font-family: 'Segoe UI';
+            font-size: 12px;
+            background: transparent;
+        """)
+        layout.addWidget(lbl)
+
+        btn = QPushButton("Cerrar")
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.setStyleSheet(f"""
+            QPushButton {{
+                background: {config.COLORS['surface']};
+                color: {config.COLORS['text']};
+                border: none;
+                border-radius: 5px;
+                padding: 6px;
+                font-family: 'Segue UI';
+                font-size: 11px;
+            }}
+            QPushButton:hover {{ background: {config.COLORS['border']}; }}
+        """)
+        btn.clicked.connect(self.close)
+        layout.addWidget(btn)
+
+        QShortcut(QKeySequence("Escape"), self).activated.connect(self.close)
+        self.show()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(config.COLORS["bg"]))
+        painter.drawRoundedRect(self.rect(), 10, 10)
