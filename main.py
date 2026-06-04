@@ -13,10 +13,9 @@ from PIL             import Image
 from core.hotkey      import HotkeyListener
 from core.capture     import capturar_pantalla
 from core.gemini      import extraer_y_traducir
+from core.tray        import TrayIcon
 from ui.selector      import SelectorPantalla
 from ui.result_window import VentanaResultado, VentanaError
-
-_screenshot_pendiente = None
 
 
 class Coordinador(QObject):
@@ -28,7 +27,6 @@ coordinador = Coordinador()
 
 
 def on_region_seleccionada(region: Image.Image):
-    """Corre en hilo del selector — procesa con Gemini."""
     def _procesar():
         try:
             print("[·] Procesando con Gemini...")
@@ -49,24 +47,26 @@ def on_region_seleccionada(region: Image.Image):
 
 
 def on_hotkey():
-    """Corre en hilo del listener — captura y abre selector en hilo propio."""
     def _run():
         print("[·] Capturando pantalla...")
         screenshot = capturar_pantalla()
-        # Selector corre en su propio hilo con tkinter
         SelectorPantalla(screenshot, on_region_seleccionada)
 
     threading.Thread(target=_run, daemon=True).start()
 
 
 def mostrar_resultado(original: str, traduccion: str):
-    """Corre en hilo principal Qt."""
     VentanaResultado(original, traduccion)
 
 
 def mostrar_error(mensaje: str):
-    """Corre en hilo principal Qt."""
     VentanaError(mensaje)
+
+
+def salir():
+    print("\n[·] Cerrando...")
+    listener.stop()
+    app.quit()
 
 
 if __name__ == "__main__":
@@ -79,15 +79,16 @@ if __name__ == "__main__":
     listener = HotkeyListener(callback=on_hotkey)
     listener.start()
 
+    tray = TrayIcon(on_salir=salir)
+    tray.start()
+
     print("━" * 50)
     print("  Traductor de Pantalla")
     print("  Hotkey : Ctrl + Shift + Q")
-    print("  Salir  : Ctrl + C")
+    print("  Tray   : clic derecho → Salir")
     print("━" * 50)
 
     try:
         sys.exit(app.exec())
     except KeyboardInterrupt:
-        print("\n[·] Cerrando...")
-        listener.stop()
-        sys.exit(0)
+        salir()

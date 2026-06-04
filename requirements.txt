@@ -1,6 +1,6 @@
 PyQt6
 google-genai
-deep-translator
 pillow
 pynput
 python-dotenv
+pystray
