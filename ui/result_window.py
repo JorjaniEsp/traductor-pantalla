@@ -7,8 +7,24 @@ from PyQt6.QtWidgets import (
     QLabel, QTextEdit, QPushButton, QFrame, QApplication
 )
 from PyQt6.QtCore import Qt, QPoint
-from PyQt6.QtGui  import QPainter, QColor, QFont, QShortcut, QKeySequence
+from PyQt6.QtGui  import QPainter, QColor, QShortcut, QKeySequence, QFontMetrics, QFont
 import config
+
+
+def _calcular_alto(texto: str, font_size: int, ancho: int, max_alto: int, padding: int = 20) -> int:
+    """Calcula el alto necesario para mostrar el texto completo."""
+    font    = QFont("Segoe UI", font_size)
+    metrics = QFontMetrics(font)
+    line_h  = metrics.lineSpacing()
+    chars_per_line = max(1, (ancho - padding * 2) // max(1, metrics.averageCharWidth()))
+    lineas  = 0
+    for parrafo in texto.split("\n"):
+        if not parrafo:
+            lineas += 1
+        else:
+            lineas += max(1, (len(parrafo) // chars_per_line) + 1)
+    alto = lineas * line_h + padding * 2
+    return min(alto, max_alto)
 
 
 class VentanaResultado(QWidget):
@@ -24,30 +40,31 @@ class VentanaResultado(QWidget):
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setFixedWidth(config.UI_WIDTH)
-        self.setMinimumHeight(config.UI_HEIGHT)
-
-        screen = QApplication.primaryScreen().geometry()
-        self.move(
-            (screen.width()  - config.UI_WIDTH)  // 2,
-            (screen.height() - config.UI_HEIGHT) // 2
-        )
 
         self._construir_ui(original, traduccion)
+
+        # Centrar
+        self.adjustSize()
+        screen = QApplication.primaryScreen().geometry()
+        self.move(
+            (screen.width()  - self.width())  // 2,
+            (screen.height() - self.height()) // 2
+        )
         self.show()
 
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setPen(Qt.PenStyle.NoPen)
-        # Sombra
         painter.setBrush(QColor(0, 0, 0, 60))
         painter.drawRoundedRect(self.rect().adjusted(4, 4, 4, 4), 12, 12)
-        # Fondo
         painter.setBrush(QColor(config.COLORS["bg"]))
         painter.drawRoundedRect(self.rect().adjusted(0, 0, -4, -4), 12, 12)
 
     def _construir_ui(self, original: str, traduccion: str):
-        C = config.COLORS
+        C          = config.COLORS
+        ancho_util = config.UI_WIDTH - 64  # descontando márgenes
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 4, 4)
         layout.setSpacing(0)
@@ -143,10 +160,11 @@ class VentanaResultado(QWidget):
         """)
         bl.addWidget(lbl_og)
 
-        og_box = QTextEdit()
+        og_alto = _calcular_alto(original, 10, ancho_util, max_alto=120)
+        og_box  = QTextEdit()
         og_box.setPlainText(original)
         og_box.setReadOnly(True)
-        og_box.setFixedHeight(100)
+        og_box.setFixedHeight(og_alto)
         og_box.setStyleSheet(f"""
             QTextEdit {{
                 background: {C['surface']};
@@ -186,10 +204,11 @@ class VentanaResultado(QWidget):
         """)
         bl.addWidget(lbl_tr)
 
-        tr_box = QTextEdit()
+        tr_alto = _calcular_alto(traduccion, 13, ancho_util, max_alto=300, padding=24)
+        tr_box  = QTextEdit()
         tr_box.setPlainText(traduccion)
         tr_box.setReadOnly(True)
-        tr_box.setMinimumHeight(180)
+        tr_box.setFixedHeight(tr_alto)
         tr_box.setStyleSheet(f"""
             QTextEdit {{
                 background: {C['surface']};
@@ -226,7 +245,6 @@ class VentanaResultado(QWidget):
 
 
 class VentanaError(QWidget):
-    """Ventana minimalista para mostrar errores."""
 
     def __init__(self, mensaje: str):
         super().__init__()
@@ -266,7 +284,7 @@ class VentanaError(QWidget):
                 border: none;
                 border-radius: 5px;
                 padding: 6px;
-                font-family: 'Segue UI';
+                font-family: 'Segoe UI';
                 font-size: 11px;
             }}
             QPushButton:hover {{ background: {config.COLORS['border']}; }}
